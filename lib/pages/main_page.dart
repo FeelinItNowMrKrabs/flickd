@@ -13,9 +13,20 @@ final mainPageDataControllerProvider =
   return MainPageDataController();
 });
 
+final selectedMoviePosterURLProvider = StateProvider<String>((ref) {
+  final _movies = ref.watch(mainPageDataControllerProvider);
+  if (_movies.movies!.isNotEmpty) {
+    return _movies.movies![0].posterURL();
+  } else {
+    return '';
+  }
+});
+
 class MainPage extends ConsumerWidget {
   late double _deviceHeight;
   late double _deviceWidth;
+
+  dynamic _selectedMoviePosterURL = '';
 
   late MainPageDataController _mainPageDataController;
   late MainPageData _mainPageData;
@@ -30,8 +41,11 @@ class MainPage extends ConsumerWidget {
     _mainPageDataController =
         ref.watch(mainPageDataControllerProvider.notifier);
     _mainPageData = ref.watch(mainPageDataControllerProvider);
+    _selectedMoviePosterURL = ref.watch(selectedMoviePosterURLProvider);
 
     _searchTextFieldController = TextEditingController();
+
+    _searchTextFieldController.text = _mainPageData.searchText!;
     return _buildUI();
   }
 
@@ -54,29 +68,42 @@ class MainPage extends ConsumerWidget {
   }
 
   Widget _backgroundWidget() {
-    return Container(
-      height: _deviceHeight,
-      width: _deviceWidth,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10.0),
-        image: const DecorationImage(
-          image: NetworkImage(
-              'https://m.media-amazon.com/images/M/MV5BOTk5ODg0OTU5M15BMl5BanBnXkFtZTgwMDQ3MDY3NjM@._V1_QL50_SY1000_CR0,0,674,1000_AL_.jpg'),
-          fit: BoxFit.cover,
-        ),
-      ),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: 15.0,
-          sigmaY: 15.0,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.2),
+    if (_selectedMoviePosterURL.state != '') {
+      print('got here');
+      print(_selectedMoviePosterURL.state);
+      return Container(
+        height: _deviceHeight,
+        width: _deviceWidth,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10.0),
+          image: DecorationImage(
+            image: NetworkImage(
+              //' https://image.tmdb.org/t/p/original//xmbU4JTUm8rsdtn7Y3Fcm30GpeT.jpg'
+
+              _selectedMoviePosterURL.state,
+            ),
+            fit: BoxFit.cover,
           ),
         ),
-      ),
-    );
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: 15.0,
+            sigmaY: 15.0,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.2),
+            ),
+          ),
+        ),
+      );
+    } else {
+      return Container(
+        height: _deviceHeight,
+        width: _deviceWidth,
+        color: Colors.black,
+      );
+    }
   }
 
   Widget _foregroundWidgets() {
@@ -125,7 +152,9 @@ class MainPage extends ConsumerWidget {
       height: _deviceHeight * 0.05,
       child: TextField(
         controller: _searchTextFieldController,
-        onSubmitted: (_input) {},
+        onSubmitted: (_input) {
+          _mainPageDataController.updateTextSearch(_input);
+        },
         style: const TextStyle(color: Colors.white),
         decoration: const InputDecoration(
             focusedBorder: _border,
@@ -145,7 +174,7 @@ class MainPage extends ConsumerWidget {
   Widget _categorySelectionWidget() {
     return DropdownButton(
       dropdownColor: Colors.black38,
-      value: SearchCategory.popular,
+      value: _mainPageData.searchCategory,
       icon: const Icon(
         Icons.menu,
         color: Colors.white24,
@@ -154,7 +183,9 @@ class MainPage extends ConsumerWidget {
         height: 1,
         color: Colors.white24,
       ),
-      onChanged: (_value) {},
+      onChanged: (_value) => _value.toString().isNotEmpty
+          ? _mainPageDataController.updateSearchCategory(_value as String)
+          : null,
       items: const [
         DropdownMenuItem(
           child: Text(
@@ -191,24 +222,40 @@ class MainPage extends ConsumerWidget {
     final List<Movie>? _movies = _mainPageData.movies;
 
     if (_movies!.isNotEmpty) {
-      return ListView.builder(
-          itemCount: _movies.length,
-          itemBuilder: (BuildContext _context, int _count) {
-            return Padding(
-              padding: EdgeInsets.symmetric(
-                vertical: _deviceHeight * 0.01,
-                horizontal: 0,
-              ),
-              child: GestureDetector(
-                onTap: () {},
-                child: MovieTile(
-                  movie: _movies[_count],
-                  height: _deviceHeight * 0.2,
-                  width: _deviceWidth * 0.85,
+      return NotificationListener(
+        onNotification: (_onScrollNotification) {
+          if (_onScrollNotification is ScrollEndNotification) {
+            final before = _onScrollNotification.metrics.extentBefore;
+            final max = _onScrollNotification.metrics.maxScrollExtent;
+            if (before == max) {
+              _mainPageDataController.getMovies();
+              return true;
+            }
+            return false;
+          }
+          return false;
+        },
+        child: ListView.builder(
+            itemCount: _movies.length,
+            itemBuilder: (BuildContext _context, int _count) {
+              return Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: _deviceHeight * 0.01,
+                  horizontal: 0,
                 ),
-              ),
-            );
-          });
+                child: GestureDetector(
+                  onTap: () {
+                    _selectedMoviePosterURL.state = _movies[_count].posterURL();
+                  },
+                  child: MovieTile(
+                    movie: _movies[_count],
+                    height: _deviceHeight * 0.2,
+                    width: _deviceWidth * 0.85,
+                  ),
+                ),
+              );
+            }),
+      );
     } else {
       return const Center(
         child: CircularProgressIndicator(
